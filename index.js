@@ -9,6 +9,8 @@ const {
   wordPuzzleWords,
   verbSentences,
   generateID,
+  castleEscapeSentenceQuestions,
+  castleEscapeWordQuestions,
 } = require("./data");
 
 const server = http.createServer(app);
@@ -27,6 +29,7 @@ io.on("connection", (socket) => {
     getRandomItem,
     userData,
     list,
+    list2,
     isList
   ) {
     console.log(userData);
@@ -49,6 +52,30 @@ io.on("connection", (socket) => {
           `Match found! ${socket.id} vs ${opponent.socketId} in ${sessionId}`
         );
         let item;
+
+        if (event == "matchFound/bombRelay") {
+          item = [];
+          words = [];
+          definitions = [];
+          for (let i = 0; i < 2; i++) {
+            item.push(getRandomItem(list));
+          }
+          for (let i = 0; i < 2; i++) {
+            item.push(getRandomItem(list2));
+          }
+
+          for (let i = 0; i < 4; i++) {
+            words.push(item[i].word);
+            definitions.push(item[i].definition);
+          }
+          io.to(opponent.socketId).emit(event, {
+            sessionId,
+            players: sessions[sessionId].players,
+            word: words,
+            definition: definitions,
+          });
+          return;
+        }
 
         if (isList) {
           item = [];
@@ -104,6 +131,17 @@ io.on("connection", (socket) => {
       getRandomWord,
       userData,
       verbSentences,
+      true
+    )
+  );
+  socket.on("findMatch/castleEscape", (userData) =>
+    findMatch(
+      bombRelayPlayers,
+      "matchFound/castleEscape",
+      getRandomWord,
+      userData,
+      castleEscapeSentenceQuestions,
+      castleEscapeWordQuestions,
       true
     )
   );

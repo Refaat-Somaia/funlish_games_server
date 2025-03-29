@@ -114,7 +114,6 @@ io.on("connection", (socket) => {
       getRandomWord,
       userData,
       wordPuzzleWords,
-
       true
     )
   );

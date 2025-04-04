@@ -19,6 +19,7 @@ const io = new Server(server);
 const sessions = {};
 var bombRelayPlayers = [];
 var wordPuzzlePlayers = [];
+var castleEscapePlayers = [];
 
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
@@ -52,16 +53,20 @@ io.on("connection", (socket) => {
           `Match found! ${socket.id} vs ${opponent.socketId} in ${sessionId}`
         );
         let item;
-
-        if (event == "matchFound/bombRelay") {
+        console.log(event == "matchFound/castleEscape");
+        if (event == "matchFound/castleEscape") {
           item = [];
           words = [];
+          options = [];
           definitions = [];
           for (let i = 0; i < 2; i++) {
             item.push(getRandomItem(list));
           }
           for (let i = 0; i < 2; i++) {
             item.push(getRandomItem(list2));
+          }
+          for (let i = 0; i < 25; i++) {
+            options.push(getRandomItem(list2).word);
           }
 
           for (let i = 0; i < 4; i++) {
@@ -72,6 +77,7 @@ io.on("connection", (socket) => {
             sessionId,
             players: sessions[sessionId].players,
             word: words,
+            options: options,
             definition: definitions,
           });
           return;
@@ -131,12 +137,14 @@ io.on("connection", (socket) => {
       getRandomWord,
       userData,
       verbSentences,
+      null,
+
       true
     )
   );
   socket.on("findMatch/castleEscape", (userData) =>
     findMatch(
-      bombRelayPlayers,
+      castleEscapePlayers,
       "matchFound/castleEscape",
       getRandomWord,
       userData,
@@ -152,6 +160,7 @@ io.on("connection", (socket) => {
       getRandomWord,
       userData,
       wordPuzzleWords,
+      null,
       true
     )
   );
@@ -203,6 +212,14 @@ io.on("connection", (socket) => {
     if (playerIndexRelay !== -1) {
       const player = bombRelayPlayers.splice(playerIndexRelay, 1)[0];
       console.log(`${player.socketId} disconnected from Bomb Relay.`);
+    }
+
+    const playerIndexCastle = castleEscapePlayers.findIndex(
+      (p) => p.socketId === socket.id
+    );
+    if (playerIndexCastle !== -1) {
+      const player = castleEscapePlayers.splice(playerIndexCastle, 1)[0];
+      console.log(`${player.socketId} disconnected from Castle Escape.`);
     }
 
     const playerIndexPuzzle = wordPuzzlePlayers.findIndex(

@@ -73,7 +73,15 @@ io.on("connection", (socket) => {
             words.push(item[i].word);
             definitions.push(item[i].definition);
           }
+
           io.to(opponent.socketId).emit(event, {
+            sessionId,
+            players: sessions[sessionId].players,
+            word: words,
+            options: options,
+            definition: definitions,
+          });
+          io.to(socket.id).emit(event, {
             sessionId,
             players: sessions[sessionId].players,
             word: words,

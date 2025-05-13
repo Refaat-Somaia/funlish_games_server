@@ -658,7 +658,7 @@ const castleEscapeWordQuestions = {
 // console.log(castleEscapeQuestions);
 
 function generateID() {
-  return (Date.now() % 1000000).toString().padStart(6, "0");
+  return (Date.now() % 1000000).toString().padStart(5, "0");
 }
 module.exports = {
   getRandomWord,

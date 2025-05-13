@@ -146,7 +146,6 @@ io.on("connection", (socket) => {
       userData,
       verbSentences,
       null,
-
       true
     )
   );
@@ -173,19 +172,128 @@ io.on("connection", (socket) => {
     )
   );
 
-  socket.on("createSession", () => {
-    io.to(socket.id).emit("sessionUpdate", { id: generateID() });
+  socket.on("createSession", ({ gameName, userData }) => {
+    const sessionId = generateID();
+    sessions[sessionId] = {
+      gameName,
+      creator: socket.id,
+      IDs: [socket.id],
+      players: [userData],
+      status: "waiting",
+    };
+
+    socket.join(sessionId);
+    console.log(
+      `Session ${sessionId} created for game ${gameName} by ${socket.id}`
+    );
+
+    socket.emit("sessionCreated", {
+      sessionId,
+      gameName,
+      players: sessions[sessionId].players,
+      isCreator: true,
+    });
   });
 
-  socket.on("joinSession", (sessionId) => {
+  socket.on("joinSession", ({ sessionId, userData }) => {
     if (!sessions[sessionId]) {
       socket.emit("error", "Session does not exist!");
       return;
     }
+
+    if (sessions[sessionId].players.length >= 2) {
+      socket.emit("error", "Session is full!");
+      return;
+    }
+
     sessions[sessionId].players.push(socket.id);
+    sessions[sessionId].userData.push(userData);
+    sessions[sessionId].status = "playing";
+
     socket.join(sessionId);
     console.log(`User ${socket.id} joined session ${sessionId}`);
-    io.to(sessionId).emit("sessionUpdate", sessions[sessionId]);
+
+    // Notify both players that the game can start
+    io.to(sessionId).emit("sessionJoined", {
+      sessionId,
+      gameName: sessions[sessionId].gameName,
+      players: sessions[sessionId].userData,
+      isCreator: false,
+    });
+
+    // Start the game based on the game type
+    const gameName = sessions[sessionId].gameName;
+    const players = sessions[sessionId].userData;
+
+    switch (gameName) {
+      case "bombRelay":
+        const bombRelayItem = [];
+        const bombRelayWordList = [];
+        const bombRelayDefinitions = [];
+        for (let i = 0; i < 4; i++) {
+          bombRelayItem.push(getRandomWord(verbSentences));
+        }
+        for (let i = 0; i < 4; i++) {
+          bombRelayWordList.push(bombRelayItem[i].word);
+          bombRelayDefinitions.push(bombRelayItem[i].definition);
+        }
+        io.to(sessionId).emit("matchFound/wordPuzzle", {
+          sessionId,
+          players,
+          word: bombRelayWordList,
+          definition: bombRelayDefinitions,
+        });
+
+        break;
+
+      case "wordPuzzle":
+        const wordPuzzleItems = [];
+        const wordPuzzleWordsList = [];
+        const wordPuzzleDefinitions = [];
+        for (let i = 0; i < 4; i++) {
+          wordPuzzleItems.push(getRandomWord(wordPuzzleWords));
+        }
+        for (let i = 0; i < 4; i++) {
+          wordPuzzleWordsList.push(wordPuzzleItems[i].word);
+          wordPuzzleDefinitions.push(wordPuzzleItems[i].definition);
+        }
+        io.to(sessionId).emit("matchFound/wordPuzzle", {
+          sessionId,
+          players,
+          word: wordPuzzleWordsList,
+          definition: wordPuzzleDefinitions,
+        });
+        break;
+
+      case "castleEscape":
+        const castleItems = [];
+        const castleWords = [];
+        const castleOptions = [];
+        const castleDefinitions = [];
+
+        for (let i = 0; i < 2; i++) {
+          castleItems.push(getRandomWord(castleEscapeSentenceQuestions));
+        }
+        for (let i = 0; i < 2; i++) {
+          castleItems.push(getRandomWord(castleEscapeWordQuestions));
+        }
+        for (let i = 0; i < 25; i++) {
+          castleOptions.push(getRandomWord(castleEscapeWordQuestions).word);
+        }
+        for (let i = 0; i < 4; i++) {
+          castleWords.push(castleItems[i].word);
+          castleDefinitions.push(castleItems[i].definition);
+        }
+
+        io.to(sessionId).emit("matchFound/castleEscape", {
+          sessionId,
+          players,
+          word: castleWords,
+          options: castleOptions,
+          definition: castleDefinitions,
+        });
+        break;
+    }
   });
 
   socket.on("sendMessage", ({ sessionId, sender, message, action }) => {
@@ -199,9 +307,15 @@ io.on("connection", (socket) => {
 
   socket.on("leaveSession", (sessionId) => {
     if (!sessions[sessionId]) return;
+
+    const wasCreator = sessions[sessionId].creator === socket.id;
     sessions[sessionId].players = sessions[sessionId].players.filter(
       (id) => id !== socket.id
     );
+    sessions[sessionId].userData = sessions[sessionId].userData.filter(
+      (user) => user.id !== socket.id
+    );
+
     socket.leave(sessionId);
     console.log(`User ${socket.id} left session ${sessionId}`);
 
@@ -209,7 +323,12 @@ io.on("connection", (socket) => {
       delete sessions[sessionId];
       console.log(`Session ${sessionId} deleted`);
     } else {
+      if (wasCreator) {
+        // Assign new creator if the original creator left
+        sessions[sessionId].creator = sessions[sessionId].players[0];
+      }
       io.to(sessionId).emit("sessionUpdate", sessions[sessionId]);
+      io.to(sessionId).emit("playerLeft", { playerId: socket.id });
     }
   });
 
@@ -239,12 +358,25 @@ io.on("connection", (socket) => {
     }
 
     Object.keys(sessions).forEach((sessionId) => {
-      if (sessions[sessionId].IDs.includes(socket.id)) {
-        io.to(sessionId).emit("sessionUpdate", {
-          message: `User ${socket.id} disconnected. The session has ended.`,
-        });
-        delete sessions[sessionId];
-        console.log(`Session ${sessionId} has been deleted.`);
+      if (sessions[sessionId].players.includes(socket.id)) {
+        const wasCreator = sessions[sessionId].creator === socket.id;
+        sessions[sessionId].players = sessions[sessionId].players.filter(
+          (id) => id !== socket.id
+        );
+        sessions[sessionId].userData = sessions[sessionId].userData.filter(
+          (user) => user.id !== socket.id
+        );
+
+        if (sessions[sessionId].players.length === 0) {
+          delete sessions[sessionId];
+          console.log(`Session ${sessionId} deleted due to disconnect`);
+        } else {
+          if (wasCreator) {
+            // Assign new creator if the original creator left
+            sessions[sessionId].creator = sessions[sessionId].players[0];
+          }
+          io.to(sessionId).emit("playerDisconnected", { playerId: socket.id });
+        }
       }
     });
 

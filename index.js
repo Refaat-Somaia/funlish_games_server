@@ -333,6 +333,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
+    // Remove from matchmaking queues
     const playerIndexRelay = bombRelayPlayers.findIndex(
       (p) => p.socketId === socket.id
     );
@@ -357,25 +358,33 @@ io.on("connection", (socket) => {
       console.log(`${player.socketId} disconnected from Word Puzzle.`);
     }
 
+    // Fixed session cleanup
     Object.keys(sessions).forEach((sessionId) => {
-      if (sessions[sessionId].players.includes(socket.id)) {
-        const wasCreator = sessions[sessionId].creator === socket.id;
-        sessions[sessionId].players = sessions[sessionId].players.filter(
-          (id) => id !== socket.id
-        );
-        sessions[sessionId].userData = sessions[sessionId].userData.filter(
-          (user) => user.id !== socket.id
-        );
+      const session = sessions[sessionId];
 
-        if (sessions[sessionId].players.length === 0) {
+      // Check IDs array instead of players array
+      const playerIndex = session.IDs.indexOf(socket.id);
+
+      if (playerIndex !== -1) {
+        // Remove from both arrays
+        session.IDs.splice(playerIndex, 1);
+        const leftPlayerData = session.players.splice(playerIndex, 1)[0];
+
+        // Handle creator reassignment
+        const wasCreator = session.creator === socket.id;
+        if (wasCreator && session.IDs.length > 0) {
+          session.creator = session.IDs[0];
+        }
+
+        // Notify room and clean up empty sessions
+        if (session.IDs.length === 0) {
           delete sessions[sessionId];
           console.log(`Session ${sessionId} deleted due to disconnect`);
         } else {
-          if (wasCreator) {
-            // Assign new creator if the original creator left
-            sessions[sessionId].creator = sessions[sessionId].players[0];
-          }
-          io.to(sessionId).emit("playerDisconnected", { playerId: socket.id });
+          io.to(sessionId).emit("playerDisconnected", {
+            playerId: socket.id,
+            playerData: leftPlayerData,
+          });
         }
       }
     });

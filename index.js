@@ -172,7 +172,22 @@ io.on("connection", (socket) => {
     )
   );
 
-  socket.on("createSession", ({ gameName, userData }) => {
+  socket.on("createSession", (data) => {
+    console.log("Received createSession data:", data);
+
+    const { gameName, userName, userLevel, characterIndex, hatIndex } = data;
+
+    const userData = {
+      name: userName || "Unknown",
+      level: userLevel || 1,
+      characterIndex: characterIndex || 0,
+      hatIndex: hatIndex || 0,
+      points: 0,
+      id: socket.id,
+    };
+
+    console.log("Processed userData: " + JSON.stringify(userData));
+
     const sessionId = generateID();
     sessions[sessionId] = {
       gameName,
@@ -195,19 +210,34 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("joinSession", ({ sessionId, userData }) => {
+  socket.on("joinSession", (data) => {
+    console.log("Received joinSession data:", data);
+
+    const { sessionId, userName, userLevel, characterIndex, hatIndex } = data;
+
     if (!sessions[sessionId]) {
       socket.emit("error", "Session does not exist!");
       return;
     }
 
-    if (sessions[sessionId].players.length >= 2) {
+    if (sessions[sessionId].IDs.length >= 2) {
       socket.emit("error", "Session is full!");
       return;
     }
 
-    sessions[sessionId].players.push(socket.id);
-    sessions[sessionId].userData.push(userData);
+    // Create userData object
+    const userData = {
+      name: userName || "Unknown",
+      level: userLevel || 1,
+      characterIndex: characterIndex || 0,
+      hatIndex: hatIndex || 0,
+      points: 0,
+      id: socket.id,
+    };
+
+    // Add player to session
+    sessions[sessionId].IDs.push(socket.id);
+    sessions[sessionId].players.push(userData);
     sessions[sessionId].status = "playing";
 
     socket.join(sessionId);
@@ -217,13 +247,15 @@ io.on("connection", (socket) => {
     io.to(sessionId).emit("sessionJoined", {
       sessionId,
       gameName: sessions[sessionId].gameName,
-      players: sessions[sessionId].userData,
-      isCreator: false,
+      players: sessions[sessionId].players,
     });
 
     // Start the game based on the game type
     const gameName = sessions[sessionId].gameName;
-    const players = sessions[sessionId].userData;
+    const players = sessions[sessionId].players;
+
+    // Determine who goes first (creator is first player)
+    const isFirstPlayer = sessions[sessionId].creator === socket.id;
 
     switch (gameName) {
       case "bombRelay":
@@ -237,13 +269,13 @@ io.on("connection", (socket) => {
           bombRelayWordList.push(bombRelayItem[i].word);
           bombRelayDefinitions.push(bombRelayItem[i].definition);
         }
-        io.to(sessionId).emit("matchFound/wordPuzzle", {
+        io.to(sessionId).emit("matchFound/bombRelay", {
           sessionId,
           players,
           word: bombRelayWordList,
           definition: bombRelayDefinitions,
+          first: isFirstPlayer, // Add first player indicator
         });
-
         break;
 
       case "wordPuzzle":
@@ -262,6 +294,7 @@ io.on("connection", (socket) => {
           players,
           word: wordPuzzleWordsList,
           definition: wordPuzzleDefinitions,
+          first: isFirstPlayer, // Add first player indicator
         });
         break;
 
@@ -291,6 +324,7 @@ io.on("connection", (socket) => {
           word: castleWords,
           options: castleOptions,
           definition: castleDefinitions,
+          // Castle Escape might not need first player indicator
         });
         break;
     }
@@ -309,23 +343,23 @@ io.on("connection", (socket) => {
     if (!sessions[sessionId]) return;
 
     const wasCreator = sessions[sessionId].creator === socket.id;
-    sessions[sessionId].players = sessions[sessionId].players.filter(
+    sessions[sessionId].IDs = sessions[sessionId].IDs.filter(
       (id) => id !== socket.id
     );
-    sessions[sessionId].userData = sessions[sessionId].userData.filter(
-      (user) => user.id !== socket.id
+    sessions[sessionId].players = sessions[sessionId].players.filter(
+      (player) => player.id !== socket.id
     );
 
     socket.leave(sessionId);
     console.log(`User ${socket.id} left session ${sessionId}`);
 
-    if (sessions[sessionId].players.length === 0) {
+    if (sessions[sessionId].IDs.length === 0) {
       delete sessions[sessionId];
       console.log(`Session ${sessionId} deleted`);
     } else {
       if (wasCreator) {
         // Assign new creator if the original creator left
-        sessions[sessionId].creator = sessions[sessionId].players[0];
+        sessions[sessionId].creator = sessions[sessionId].IDs[0];
       }
       io.to(sessionId).emit("sessionUpdate", sessions[sessionId]);
       io.to(sessionId).emit("playerLeft", { playerId: socket.id });
@@ -366,17 +400,14 @@ io.on("connection", (socket) => {
       const playerIndex = session.IDs.indexOf(socket.id);
 
       if (playerIndex !== -1) {
-        // Remove from both arrays
         session.IDs.splice(playerIndex, 1);
         const leftPlayerData = session.players.splice(playerIndex, 1)[0];
 
-        // Handle creator reassignment
         const wasCreator = session.creator === socket.id;
         if (wasCreator && session.IDs.length > 0) {
           session.creator = session.IDs[0];
         }
 
-        // Notify room and clean up empty sessions
         if (session.IDs.length === 0) {
           delete sessions[sessionId];
           console.log(`Session ${sessionId} deleted due to disconnect`);

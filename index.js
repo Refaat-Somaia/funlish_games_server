@@ -258,7 +258,7 @@ io.on("connection", (socket) => {
     const isFirstPlayer = sessions[sessionId].creator === socket.id;
 
     switch (gameName) {
-      case "bomb Relay":
+      case "Bomb Relay":
         const bombRelayItem = [];
         const bombRelayWordList = [];
         const bombRelayDefinitions = [];
@@ -278,7 +278,7 @@ io.on("connection", (socket) => {
         });
         break;
 
-      case "word Puzzle":
+      case "Word Puzzle":
         const wordPuzzleItems = [];
         const wordPuzzleWordsList = [];
         const wordPuzzleDefinitions = [];
@@ -298,7 +298,7 @@ io.on("connection", (socket) => {
         });
         break;
 
-      case "castle Escape":
+      case "Castle Escape":
         const castleItems = [];
         const castleWords = [];
         const castleOptions = [];
